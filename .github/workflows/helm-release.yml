@@ -81,25 +81,40 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .cr-release-packages-oci
-          # lowercase owner for OCI references
+
           OWNER_LC_LOWER=$(echo "${OWNER_LC}" | tr '[:upper:]' '[:lower:]')
           REPO_LC_LOWER=$(echo "${REPO_LC}" | tr '[:upper:]' '[:lower:]')
-          REGISTRY="oci://ghcr.io/${OWNER_LC_LOWER}/${REPO_LC_LOWER}/charts"
+          # Helm push/pull use the oci:// scheme; cosign uses bare registry refs.
+          HELM_REGISTRY="oci://ghcr.io/${OWNER_LC_LOWER}/${REPO_LC_LOWER}/charts"
+          PLAIN_REGISTRY="ghcr.io/${OWNER_LC_LOWER}/${REPO_LC_LOWER}/charts"
 
+          # "ref@digest" entries — passed to the sign step
           pushed=()
+
           for chart in charts/*/; do
             chart_name=$(helm show chart "${chart}" | awk '/^name:/    {print $2}')
             chart_ver=$(helm  show chart "${chart}" | awk '/^version:/ {print $2}')
             tarball=".cr-release-packages-oci/${chart_name}-${chart_ver}.tgz"
 
-            if helm pull "${REGISTRY}/${chart_name}" --version "${chart_ver}" --destination /tmp >/dev/null 2>&1; then
+            if helm pull "${HELM_REGISTRY}/${chart_name}" --version "${chart_ver}" --destination /tmp >/dev/null 2>&1; then
               echo "::notice::OCI chart ${chart_name}@${chart_ver} already exists, skipping push."
               continue
             fi
 
             helm package "${chart}" --destination .cr-release-packages-oci
-            helm push "${tarball}" "${REGISTRY}"
-            pushed+=("${REGISTRY}/${chart_name}:${chart_ver}")
+
+            # Capture the digest printed by `helm push` so cosign can sign by
+            # digest (more secure than signing by tag).
+            push_out=$(helm push "${tarball}" "${HELM_REGISTRY}" 2>&1)
+            echo "${push_out}"
+            digest=$(echo "${push_out}" | awk '/^Digest:/ {print $2}')
+
+            if [[ -n "${digest}" ]]; then
+              pushed+=("${PLAIN_REGISTRY}/${chart_name}@${digest}")
+            else
+              # Fallback to tag-based ref if helm push did not print a digest.
+              pushed+=("${PLAIN_REGISTRY}/${chart_name}:${chart_ver}")
+            fi
           done
 
           {
@@ -109,7 +124,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       # --------------------------------------------------------------- #
-      # Sign OCI chart artefacts (keyless)                              #
+      # Sign OCI chart artefacts (keyless cosign, Sigstore transparency) #
       # --------------------------------------------------------------- #
       - name: Install cosign
         if: steps.oci.outputs.pushed != ''
@@ -119,6 +134,8 @@ jobs:
         if: steps.oci.outputs.pushed != ''
         run: |
           set -euo pipefail
+          # refs are already bare registry references (no oci:// prefix),
+          # optionally with @sha256:<digest> for digest-pinned signing.
           while IFS= read -r ref; do
             [[ -z "${ref}" ]] && continue
             echo "Signing ${ref}"
