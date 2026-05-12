@@ -1,0 +1,19 @@
+<!--
+  Bitdefender GravityZone Wazuh rules.
+  Copy this file to /var/ossec/etc/rules/ on the Wazuh manager and restart:
+    sudo cp bitdefender.xml /var/ossec/etc/rules/
+    sudo systemctl restart wazuh-manager
+-->
+
+<group name="bitdefender-GZ">
+  <rule id="100600" level="0">
+    <decoded_as>gravityzone</decoded_as>
+    <description>Logs from Bitdefender.</description>
+  </rule>
+
+  <rule id="100601" level="10">
+    <if_sid>100600</if_sid>
+    <field name="BitdefenderModule">AntiMalware</field>
+    <description>Bitdefender: $(MalwareName) detected on $(DeviceHostName) and $(Action).</description>
+  </rule>
+</group>

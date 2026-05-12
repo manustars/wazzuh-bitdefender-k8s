@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "bdgz.fullname" . }}-test-tcp"
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "bdgz.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: tcp-probe
+      image: busybox:1.36
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      command:
+        - sh
+        - -c
+        - |
+          set -eu
+          echo "Probing {{ include "bdgz.fullname" . }}:{{ .Values.service.port }}…"
+          for i in 1 2 3 4 5; do
+            if nc -z -w 2 {{ include "bdgz.fullname" . }} {{ .Values.service.port }}; then
+              echo "OK — connector is accepting TCP connections."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "FAIL — connector did not accept a TCP connection." >&2
+          exit 1

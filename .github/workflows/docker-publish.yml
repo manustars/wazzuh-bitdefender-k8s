@@ -1,0 +1,153 @@
+name: docker-publish
+
+# Builds & publishes a multi-arch (linux/amd64 + linux/arm64) OCI image for
+# the Bitdefender GravityZone EVPSC connector.
+#
+# Tag strategy (managed by docker/metadata-action):
+#   * pushes to default branch  → ghcr.io/<repo>:edge, :sha-<short>
+#   * git tag v1.2.3            → :v1.2.3, :1.2.3, :1.2, :1, :latest
+#   * pull requests             → built but NOT pushed (no permissions used)
+#
+# Supply-chain hardening:
+#   * Builds run inside ephemeral GitHub-hosted runners
+#   * SBOM (SPDX) is generated and attached to the image
+#   * Provenance attestations (SLSA L3) are produced by buildx
+#   * Image is signed keyless with cosign + OIDC (Sigstore)
+#   * Trivy scans the resulting image on every push; results are uploaded to
+#     the GitHub Security tab.
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*.*.*']
+    paths:
+      - 'docker/**'
+      - '.github/workflows/docker-publish.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'docker/**'
+      - '.github/workflows/docker-publish.yml'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/bitdefender-gz-connector
+
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & push multi-arch image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write          # cosign keyless signing
+      attestations: write      # build provenance attestation
+      security-events: write   # Trivy SARIF upload
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (cross-arch emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix=sha-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=edge,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+          labels: |
+            org.opencontainers.image.title=bitdefender-gz-connector
+            org.opencontainers.image.description=Bitdefender GravityZone Event Push Service Connector for Wazuh integration
+            org.opencontainers.image.vendor=Manustars
+            org.opencontainers.image.licenses=MIT
+
+      - name: Build & push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+          build-args: |
+            IMAGE_REVISION=${{ github.sha }}
+            IMAGE_VERSION=${{ steps.meta.outputs.version }}
+            IMAGE_CREATED=${{ steps.meta.outputs.created || github.event.head_commit.timestamp }}
+
+      # ----- Sign + attest (only on push to default branch or tags) ----- #
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@v3.7.0
+
+      - name: Sign image (keyless, OIDC)
+        if: github.event_name != 'pull_request'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          for tag in ${TAGS}; do
+            cosign sign --yes "${tag}@${DIGEST}"
+          done
+
+      - name: Attest build provenance
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      # ----- Vulnerability scan ----- #
+      - name: Run Trivy scan (SARIF)
+        if: github.event_name != 'pull_request'
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '0'
+
+      - name: Upload Trivy SARIF
+        if: github.event_name != 'pull_request'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-image

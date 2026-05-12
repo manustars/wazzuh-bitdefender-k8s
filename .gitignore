@@ -1,0 +1,24 @@
+# Helm
+/charts/**/charts/
+/charts/**/Chart.lock
+/charts/**/*.tgz
+/.cr-release-packages/
+/.cr-release-packages-oci/
+/.cr-index/
+
+# Build artefacts
+*.tar
+*.tar.xz
+*.deb
+*.sarif
+trivy-results.*
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local
+.env
+*.local

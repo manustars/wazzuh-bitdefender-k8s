@@ -1,0 +1,18 @@
+<!--
+  Bitdefender GravityZone CEF decoder for Wazuh.
+  Copy this file to /var/ossec/etc/decoders/ on the Wazuh manager and restart
+  the manager:
+    sudo cp bitdefendergz.xml /var/ossec/etc/decoders/
+    sudo systemctl restart wazuh-manager
+-->
+
+<decoder name="gravityzone">
+  <program_name>CEF</program_name>
+  <prematch>GravityZone</prematch>
+</decoder>
+
+<decoder name="gravityzone_child">
+  <parent>gravityzone</parent>
+  <regex type="pcre2">.*AntiMalware.*dvchost=(\S+).*dvc=(\S+).*</regex>
+  <order>BitdefenderModule,DeviceHostName,DeviceIP,MalwareType,MalwareName,MalwareHash,Action,FilePath,DetectionTime,CleanedMalwareCount,BlockedMalwareCount,DeletedMalwareCount,QuarantinedMalwareCount,IgnoredMalwareCount,PresentMalwareCount,User</order>
+</decoder>

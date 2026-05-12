@@ -1,0 +1,138 @@
+{{- if and (not .Values.auth.value) (not (and .Values.auth.existingSecret .Values.auth.existingSecret.name)) -}}
+{{- fail "auth: either auth.value or auth.existingSecret.name must be set" -}}
+{{- end -}}
+{{- if and (eq .Values.tls.mode "existingSecret") (not (and .Values.tls.existingSecret .Values.tls.existingSecret.name)) -}}
+{{- fail "tls: tls.existingSecret.name is required when tls.mode=existingSecret" -}}
+{{- end -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bdgz.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "bdgz.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: 5
+  strategy:
+    {{- toYaml .Values.updateStrategy | nindent 4 }}
+  selector:
+    matchLabels: {{- include "bdgz.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bdgz.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        # Re-roll pods when the AUTH secret content changes (only meaningful
+        # when the chart creates the secret itself).
+        {{- if eq (include "bdgz.createAuthSecret" .) "true" }}
+        checksum/auth-secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "bdgz.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: 30
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: connector
+          image: {{ include "bdgz.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: api
+              containerPort: {{ .Values.connector.port }}
+              protocol: TCP
+          env:
+            - name: BITDEFENDER_PORT
+              value: {{ .Values.connector.port | quote }}
+            - name: SYSLOG_PORT
+              value: {{ .Values.syslog.port | quote }}
+            - name: TRANSPORT
+              value: {{ .Values.syslog.transport | quote }}
+            - name: TARGET
+              value: {{ required "syslog.target is required (e.g. wazuh-manager.wazuh.svc.cluster.local)" .Values.syslog.target | quote }}
+            - name: AUTH_FILE
+              value: /etc/gz-evpsc/auth/{{ include "bdgz.authSecretKey" . }}
+            {{- if eq .Values.tls.mode "existingSecret" }}
+            - name: TLS_KEY_PATH
+              value: /etc/gz-evpsc/tls/{{ .Values.tls.existingSecret.keyKey }}
+            - name: TLS_CERT_PATH
+              value: /etc/gz-evpsc/tls/{{ .Values.tls.existingSecret.certKey }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.extraEnvFrom }}
+          envFrom: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            # Writable runtime dir: rendered config.json + (optionally) the
+            # self-signed cert when tls.mode=selfSigned.
+            - name: runtime
+              mountPath: /var/lib/gz-evpsc
+            - name: tmp
+              mountPath: /tmp
+            - name: auth
+              mountPath: /etc/gz-evpsc/auth
+              readOnly: true
+            {{- if eq .Values.tls.mode "existingSecret" }}
+            - name: tls
+              mountPath: /etc/gz-evpsc/tls
+              readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.livenessProbe }}
+          livenessProbe: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.readinessProbe }}
+          readinessProbe: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.startupProbe }}
+          startupProbe: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: runtime
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: auth
+          secret:
+            secretName: {{ include "bdgz.authSecretName" . }}
+            defaultMode: 0400
+        {{- if eq .Values.tls.mode "existingSecret" }}
+        - name: tls
+          secret:
+            secretName: {{ .Values.tls.existingSecret.name }}
+            defaultMode: 0400
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}

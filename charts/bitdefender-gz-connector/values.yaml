@@ -1,0 +1,245 @@
+# =============================================================================
+# bitdefender-gz-connector — default values
+# =============================================================================
+# Every value documented here is validated against values.schema.json at
+# `helm install` / `helm upgrade` time.
+# -----------------------------------------------------------------------------
+
+# -- Override the chart name used in resource names.
+nameOverride: ""
+# -- Fully override the generated fullname.
+fullnameOverride: ""
+
+image:
+  # -- Container image repository.
+  repository: ghcr.io/manustars/wazzuh-bitdefender-k8s/bitdefender-gz-connector
+  # -- Image tag. Leave empty to default to `.Chart.AppVersion`.
+  tag: ""
+  # -- Image pull policy.
+  pullPolicy: IfNotPresent
+  # -- Pinned image digest (recommended for production — wins over `tag`).
+  digest: ""
+
+# -- imagePullSecrets used to pull from private registries.
+imagePullSecrets: []
+#  - name: ghcr-secret
+
+# =============================================================================
+# Connector configuration
+# =============================================================================
+# Equivalent to the arguments passed to `config.sh` on a bare-metal install:
+#   ./config.sh <BITDEFENDER_PORT> <SYSLOG_PORT> <TRANSPORT> <TARGET> <AUTH> config.json
+# -----------------------------------------------------------------------------
+connector:
+  # -- TCP port the connector listens on for inbound HTTPS pushes from
+  # Bitdefender Control Center. This is the value you register under
+  # Settings → API keys → Push event configuration in GravityZone.
+  port: 3200
+
+syslog:
+  # -- Hostname/IP of the syslog destination. Typically the in-cluster Wazuh
+  # manager service (e.g. `wazuh-manager.wazuh.svc.cluster.local`).
+  target: ""
+  # -- Syslog destination port (must match the Wazuh `<remote><port>` block).
+  port: 514
+  # -- Transport: `Tcp` or `Udp`.
+  transport: Tcp
+
+auth:
+  # -- Inline Authorization header (e.g. `Basic ZHVtbXk6ZHVtbXk=`).
+  # *Either* `value` *or* `existingSecret` must be provided. Use
+  # `existingSecret` in production — `value` ends up in the rendered chart.
+  value: ""
+  # -- Reference an existing Kubernetes Secret containing the AUTH header.
+  existingSecret:
+    name: ""
+    # -- Key inside the Secret holding the Authorization header value.
+    key: auth
+
+tls:
+  # -- Behaviour for the inbound HTTPS listener:
+  #   * `selfSigned` — generate a 10-year self-signed cert at first start
+  #     (stored in the runtime emptyDir; suitable for dev / test).
+  #   * `existingSecret` — mount a `kubernetes.io/tls` Secret you manage
+  #     (recommended; pair with cert-manager).
+  mode: selfSigned
+  existingSecret:
+    # -- Name of the Secret to mount when `mode: existingSecret`.
+    name: ""
+    # -- Key holding the TLS private key inside the secret.
+    keyKey: tls.key
+    # -- Key holding the TLS certificate inside the secret.
+    certKey: tls.crt
+
+# =============================================================================
+# Workload
+# =============================================================================
+replicaCount: 1
+
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+# -- Extra environment variables passed verbatim to the container.
+extraEnv: []
+#  - name: NODE_OPTIONS
+#    value: "--max-old-space-size=256"
+
+# -- Extra environment variables sourced from existing Secrets / ConfigMaps.
+extraEnvFrom: []
+#  - secretRef:
+#      name: my-extra-secret
+
+# -- Extra volumes mounted into the pod (e.g. to provide custom CA bundles).
+extraVolumes: []
+extraVolumeMounts: []
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 96Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# -- Pod-level security context (enforced; do not relax without a security review).
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container-level security context.
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  privileged: false
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  capabilities:
+    drop:
+      - ALL
+
+# Probes target the inbound HTTPS listener. The TLS cert is self-signed by
+# default so we use TCP probes (sufficient to detect that the Node.js process
+# has bound the port).
+livenessProbe:
+  tcpSocket:
+    port: api
+  initialDelaySeconds: 15
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  tcpSocket:
+    port: api
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+startupProbe:
+  tcpSocket:
+    port: api
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 12
+
+# =============================================================================
+# Service
+# =============================================================================
+service:
+  type: ClusterIP
+  # -- Service port exposing the HTTPS listener.
+  port: 3200
+  # -- Optional fixed nodePort when `type: NodePort` (1024–65535 or empty).
+  nodePort: ""
+  annotations: {}
+  labels: {}
+  # -- For `LoadBalancer` services targeting the Bitdefender cloud, this is
+  # where you would set `loadBalancerSourceRanges` (CIDRs of Bitdefender's
+  # Control Center egress IPs — see GravityZone documentation).
+  loadBalancerSourceRanges: []
+  # -- Internal cluster IP traffic policy.
+  internalTrafficPolicy: Cluster
+  # -- External traffic policy (Local preserves source IP for NetworkPolicy
+  # matching — recommended when service.type is NodePort / LoadBalancer).
+  externalTrafficPolicy: ""
+
+ingress:
+  # -- Most ingress controllers don't terminate TCP gracefully and the
+  # protocol is HTTPS-only push from Bitdefender's cloud, so we typically
+  # expose this via a LoadBalancer service. Enable Ingress only if your
+  # controller supports passthrough TLS for this exact endpoint.
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []
+  tls: []
+
+# =============================================================================
+# Reliability & policy
+# =============================================================================
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  maxUnavailable: ""
+
+networkPolicy:
+  # -- Create a NetworkPolicy that:
+  #   * allows DNS to kube-dns
+  #   * allows ingress from the CIDRs listed in `from`
+  #   * allows egress to the syslog target (`syslog.target` on `syslog.port`)
+  enabled: false
+  # -- Ingress sources allowed to reach :3200/tcp. Should include the
+  # Bitdefender Control Center push-event egress CIDRs (consult
+  # GravityZone docs) and any internal CIDRs sending test traffic.
+  from: []
+  #  - ipBlock:
+  #      cidr: 0.0.0.0/0
+  # -- Additional egress destinations beyond the syslog target.
+  extraEgress: []
+
+# =============================================================================
+# Scheduling
+# =============================================================================
+nodeSelector: {}
+tolerations: []
+affinity: {}
+# -- Default to spreading replicas across zones when running >1 replica.
+topologySpreadConstraints: []
+# -- Priority class for the pod.
+priorityClassName: ""
+
+# =============================================================================
+# Service account
+# =============================================================================
+serviceAccount:
+  create: true
+  name: ""
+  automountServiceAccountToken: false
+  annotations: {}
+
+# =============================================================================
+# Observability
+# =============================================================================
+podAnnotations: {}
+podLabels: {}
+
+# -- Reserved for a future ServiceMonitor (Prometheus Operator). gz-evpsc does
+# not currently expose metrics, so this is a placeholder.
+metrics:
+  enabled: false
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}

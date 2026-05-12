@@ -1,0 +1,17 @@
+<!--
+  Snippet to add to /var/ossec/etc/ossec.conf on the Wazuh manager so that it
+  accepts syslog from the gz-evpsc connector running in Kubernetes.
+  Replace <ALLOWED_IP> with the connector's source CIDR (typically the pod or
+  service CIDR of your cluster, or the egress IP if the connector reaches
+  Wazuh from outside).
+-->
+
+<ossec_config>
+  <remote>
+    <connection>syslog</connection>
+    <port>514</port>
+    <protocol>tcp</protocol>
+    <allowed-ips>10.0.0.0/8</allowed-ips>
+    <local_ip>0.0.0.0</local_ip>
+  </remote>
+</ossec_config>

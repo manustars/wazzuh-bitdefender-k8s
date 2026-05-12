@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "bitdefender-gz-connector values",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "nameOverride":     { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "pullPolicy"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag":        { "type": "string" },
+        "digest":     { "type": "string", "pattern": "^(|sha256:[A-Fa-f0-9]{64})$" },
+        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+
+    "imagePullSecrets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": { "name": { "type": "string", "minLength": 1 } }
+      }
+    },
+
+    "connector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["port"],
+      "properties": {
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+
+    "syslog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target", "port", "transport"],
+      "properties": {
+        "target":    { "type": "string", "description": "Hostname or IP of the syslog destination (typically the Wazuh manager service). Required at install time — enforced by the template." },
+        "port":      { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "transport": { "type": "string", "enum": ["Tcp", "Udp"] }
+      }
+    },
+
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Authorization header for inbound Bitdefender push events. Either `value` or `existingSecret.name` must be set at install time; enforcement happens in the template.",
+      "properties": {
+        "value": { "type": "string" },
+        "existingSecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string" },
+            "key":  { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+
+    "tls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": { "type": "string", "enum": ["selfSigned", "existingSecret"] },
+        "existingSecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name":    { "type": "string" },
+            "keyKey":  { "type": "string", "minLength": 1 },
+            "certKey": { "type": "string", "minLength": 1 }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if":   { "properties": { "mode": { "const": "existingSecret" } } },
+          "then": {
+            "properties": {
+              "existingSecret": {
+                "properties": { "name": { "type": "string", "minLength": 1 } },
+                "required":   ["name"]
+              }
+            },
+            "required": ["existingSecret"]
+          }
+        }
+      ]
+    },
+
+    "replicaCount":   { "type": "integer", "minimum": 1 },
+    "updateStrategy": { "type": "object" },
+
+    "extraEnv":         { "type": "array" },
+    "extraEnvFrom":     { "type": "array" },
+    "extraVolumes":     { "type": "array" },
+    "extraVolumeMounts":{ "type": "array" },
+
+    "resources":              { "type": "object" },
+    "podSecurityContext":     { "type": "object" },
+    "containerSecurityContext":{ "type": "object" },
+    "livenessProbe":          { "type": "object" },
+    "readinessProbe":         { "type": "object" },
+    "startupProbe":           { "type": "object" },
+
+    "service": {
+      "type": "object",
+      "properties": {
+        "type":     { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer", "ExternalName"] },
+        "port":     { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "nodePort": {
+          "oneOf": [
+            { "type": "string", "pattern": "^$" },
+            { "type": "integer", "minimum": 1024, "maximum": 65535 }
+          ]
+        },
+        "annotations": { "type": "object" },
+        "labels":      { "type": "object" },
+        "loadBalancerSourceRanges": { "type": "array", "items": { "type": "string" } },
+        "internalTrafficPolicy":   { "type": "string", "enum": ["Cluster", "Local"] },
+        "externalTrafficPolicy":   { "type": "string", "enum": ["", "Cluster", "Local"] }
+      }
+    },
+
+    "ingress":             { "type": "object" },
+    "podDisruptionBudget": { "type": "object" },
+    "networkPolicy":       { "type": "object" },
+
+    "nodeSelector":            { "type": "object" },
+    "tolerations":             { "type": "array"  },
+    "affinity":                { "type": "object" },
+    "topologySpreadConstraints":{ "type": "array" },
+    "priorityClassName":       { "type": "string" },
+
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create":                       { "type": "boolean" },
+        "name":                         { "type": "string"  },
+        "automountServiceAccountToken": { "type": "boolean" },
+        "annotations":                  { "type": "object"  }
+      }
+    },
+
+    "podAnnotations": { "type": "object" },
+    "podLabels":      { "type": "object" },
+    "metrics":        { "type": "object" }
+  }
+}

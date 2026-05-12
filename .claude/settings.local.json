@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s \"https://download.bitdefender.com/repos/deb-hydra20-evpsc/dists/bitdefender/non-free/\")",
+      "Bash(curl -sI \"https://download.bitdefender.com/repos/deb-hydra20-evpsc/dists/bitdefender/Release\")",
+      "Bash(curl -s \"https://download.bitdefender.com/repos/deb-hydra20-evpsc/dists/bitdefender/Release\")",
+      "Bash(curl -s \"https://download.bitdefender.com/repos/deb-hydra20-evpsc/dists/bitdefender/non-free/binary-amd64/Packages\")",
+      "Bash(cd /tmp)",
+      "Bash(curl -sLO \"https://download.bitdefender.com/repos/deb-hydra20-evpsc/pool/non-free/g/gz-evpsc/gz-evpsc_1.0.0-4_all.deb\")",
+      "Bash(dpkg-deb -c gz-evpsc_1.0.0-4_all.deb)",
+      "PowerShell($ErrorActionPreference='Stop'; $deb='C:\\\\Users\\\\marse\\\\AppData\\\\Local\\\\Temp\\\\gz-evpsc_1.0.0-4_all.deb'; if \\(-not \\(Test-Path 'C:\\\\temp\\\\gz-evpsc-extract'\\)\\) { New-Item -ItemType Directory -Force 'C:\\\\temp\\\\gz-evpsc-extract' | Out-Null }; & 'C:\\\\Program Files\\\\7-Zip\\\\7z.exe' x $deb -o'C:\\\\temp\\\\gz-evpsc-extract' -y 2>&1 | Select-Object -Last 20)",
+      "Read(//c/temp/gz-evpsc-extract/**)",
+      "Bash(rm -rf C:/temp/gz-evpsc-extract /tmp/gz-evpsc_1.0.0-4_all.deb 2>&1 || true)",
+      "PowerShell(Get-Command helm -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source; if \\(-not \\(Get-Command helm -ErrorAction SilentlyContinue\\)\\) { winget install --silent --accept-source-agreements --accept-package-agreements Helm.Helm 2>&1 | Select-Object -Last 5 })",
+      "PowerShell($helm = 'C:\\\\Users\\\\marse\\\\AppData\\\\Local\\\\Microsoft\\\\WinGet\\\\Packages\\\\Helm.Helm_Microsoft.Winget.Source_8wekyb3d8bbwe\\\\windows-amd64\\\\helm.exe'; & $helm lint charts/bitdefender-gz-connector 2>&1)",
+      "PowerShell($helm = 'C:\\\\Users\\\\marse\\\\AppData\\\\Local\\\\Microsoft\\\\WinGet\\\\Packages\\\\Helm.Helm_Microsoft.Winget.Source_8wekyb3d8bbwe\\\\windows-amd64\\\\helm.exe'; & $helm lint charts/bitdefender-gz-connector --set auth.value='Basic ZHVtbXk6ZHVtbXk=' --set syslog.target=wazuh-manager.wazuh.svc.cluster.local 2>&1)",
+      "PowerShell($helm = 'C:\\\\Users\\\\marse\\\\AppData\\\\Local\\\\Microsoft\\\\WinGet\\\\Packages\\\\Helm.Helm_Microsoft.Winget.Source_8wekyb3d8bbwe\\\\windows-amd64\\\\helm.exe'; & $helm template smoke charts/bitdefender-gz-connector --namespace bitdefender --set auth.value='Basic ZHVtbXk6ZHVtbXk=' --set syslog.target=wazuh-manager.wazuh.svc.cluster.local --set networkPolicy.enabled=true --set podDisruptionBudget.enabled=true 2>&1 | Out-File -FilePath C:\\\\temp\\\\rendered.yaml -Encoding utf8; \\(Get-Content C:\\\\temp\\\\rendered.yaml | Measure-Object -Line\\).Lines; Write-Host '--- HEAD ---'; Get-Content C:\\\\temp\\\\rendered.yaml -TotalCount 60)",
+      "Read(//c/temp/**)",
+      "PowerShell($helm = 'C:\\\\Users\\\\marse\\\\AppData\\\\Local\\\\Microsoft\\\\WinGet\\\\Packages\\\\Helm.Helm_Microsoft.Winget.Source_8wekyb3d8bbwe\\\\windows-amd64\\\\helm.exe'; Write-Host \"=== Test 1: missing AUTH should fail ===\"; & $helm template smoke charts/bitdefender-gz-connector --set syslog.target=wazuh-manager.wazuh.svc.cluster.local 2>&1 | Select-Object -Last 5; Write-Host \"\"; Write-Host \"=== Test 2: existingSecret AUTH + TLS ===\"; & $helm template smoke charts/bitdefender-gz-connector --set auth.existingSecret.name=my-auth --set tls.mode=existingSecret --set tls.existingSecret.name=my-tls --set syslog.target=wazuh-manager.wazuh.svc.cluster.local 2>&1 | Select-String -Pattern 'kind:|secretName:|TLS_KEY_PATH|TLS_CERT_PATH|AUTH_FILE' | Select-Object -First 30; Write-Host \"\"; Write-Host \"=== Test 3: missing TARGET should fail ===\"; & $helm template smoke charts/bitdefender-gz-connector --set auth.value='X' 2>&1 | Select-Object -Last 5)",
+      "PowerShell($helm = 'C:\\\\Users\\\\marse\\\\AppData\\\\Local\\\\Microsoft\\\\WinGet\\\\Packages\\\\Helm.Helm_Microsoft.Winget.Source_8wekyb3d8bbwe\\\\windows-amd64\\\\helm.exe'; & $helm package charts/bitdefender-gz-connector --destination C:\\\\temp 2>&1; & $helm show chart C:\\\\temp\\\\bitdefender-gz-connector-0.1.0.tgz 2>&1)",
+      "Bash(rm -f C:/temp/bitdefender-gz-connector-0.1.0.tgz C:/temp/rendered.yaml)",
+      "PowerShell(python -c \"import yaml,sys; [yaml.safe_load\\(open\\(p,encoding='utf-8'\\)\\) for p in sys.argv[1:]]; print\\('OK'\\)\" .github/workflows/ci.yml .github/workflows/docker-publish.yml .github/workflows/helm-release.yml .github/dependabot.yml charts/bitdefender-gz-connector/Chart.yaml charts/bitdefender-gz-connector/values.yaml charts/bitdefender-gz-connector/ci/ct-values.yaml 2>&1)",
+      "PowerShell($ErrorActionPreference='SilentlyContinue')",
+      "PowerShell(python -m pip install --quiet pyyaml jsonschema 2>&1)"
+    ],
+    "additionalDirectories": [
+      "C:\\temp\\gz-evpsc-extract",
+      "C:\\temp"
+    ]
+  }
+}

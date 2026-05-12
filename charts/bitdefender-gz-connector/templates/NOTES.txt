@@ -1,0 +1,54 @@
+
+{{- $svc := include "bdgz.fullname" . -}}
+{{ .Chart.Name }} v{{ .Chart.Version }} (app v{{ .Chart.AppVersion }}) has been installed.
+
+Connector service inside the cluster:
+  {{ $svc }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}/TCP   (HTTPS, push events)
+
+Configured syslog destination (where decoded Bitdefender CEF events are sent):
+  {{ .Values.syslog.target }}:{{ .Values.syslog.port }}/{{ .Values.syslog.transport }}
+
+{{- if eq .Values.tls.mode "selfSigned" }}
+
+⚠  TLS mode: selfSigned
+   A 10-year self-signed certificate is generated at first start. Bitdefender
+   Control Center will reject this certificate unless you import it as a
+   trusted CA, or you configure GravityZone to ignore TLS validation.
+   For production use, set tls.mode=existingSecret and provide a real cert
+   (e.g. issued by cert-manager).
+{{- else }}
+
+✓  TLS mode: existingSecret
+   Cert / key are mounted from Secret "{{ .Values.tls.existingSecret.name }}".
+{{- end }}
+
+Next steps
+==========
+
+1. Expose the connector to Bitdefender Control Center.
+
+   Bitdefender's cloud must reach the connector at :{{ .Values.connector.port }}/HTTPS.
+{{- if eq .Values.service.type "ClusterIP" }}
+   The service is currently ClusterIP — make it externally reachable by
+   either switching service.type=LoadBalancer/NodePort, or by fronting it
+   with an ingress controller that supports TLS passthrough.
+{{- else if eq .Values.service.type "LoadBalancer" }}
+   Wait for the LoadBalancer to acquire an external IP:
+     kubectl -n {{ .Release.Namespace }} get svc {{ $svc }} -w
+{{- else if eq .Values.service.type "NodePort" }}
+   The connector is exposed via NodePort {{ .Values.service.nodePort | default "(auto-assigned)" }}.
+{{- end }}
+
+2. In GravityZone Control Center go to:
+     Settings → API keys → Push event configuration
+   and configure the URL as:
+     https://<external-host>:{{ .Values.connector.port }}/api
+   with the same Authorization header you set in `auth.value` (or in the
+   Secret referenced by `auth.existingSecret`).
+
+3. Confirm forwarding works:
+     kubectl -n {{ .Release.Namespace }} logs -l app.kubernetes.io/name={{ include "bdgz.name" . }} -f
+
+4. On the Wazuh manager side, make sure ossec.conf accepts syslog from this
+   service IP on :{{ .Values.syslog.port }}/{{ .Values.syslog.transport }}, and that the bitdefender
+   decoder + rules (see the `wazuh/` directory of the source repo) are loaded.

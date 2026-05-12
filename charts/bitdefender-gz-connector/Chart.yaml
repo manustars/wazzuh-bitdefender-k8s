@@ -1,0 +1,46 @@
+apiVersion: v2
+name: bitdefender-gz-connector
+description: |
+  Containerised Bitdefender GravityZone Event Push Service Connector
+  (gz-evpsc) for Wazuh integration. Receives push events from
+  Bitdefender's Control Center over HTTPS and relays them as CEF
+  syslog to a Wazuh manager.
+type: application
+
+# IMPORTANT
+# ---------
+# `version`    — bump for every chart change (SemVer). chart-releaser uses this
+#                to decide whether to cut a new GitHub Release.
+# `appVersion` — tracks the upstream gz-evpsc package version (from the .deb).
+version: 0.1.0
+appVersion: "1.0.0-4"
+
+kubeVersion: ">=1.25.0-0"
+
+icon: https://www.bitdefender.com/content/dam/bitdefender/global-images/logo.svg
+
+home: https://github.com/Manustars/wazzuh-bitdefender-k8s
+sources:
+  - https://github.com/Manustars/wazzuh-bitdefender-k8s
+  - https://wazuh.com/blog/integrating-bitdefender-gravityzone-with-wazuh/
+
+keywords:
+  - bitdefender
+  - gravityzone
+  - wazuh
+  - siem
+  - security
+  - syslog
+  - cef
+  - edr
+
+maintainers:
+  - name: Manustars
+    email: marselli.manuel@gmail.com
+
+annotations:
+  artifacthub.io/category: security
+  artifacthub.io/license: MIT
+  artifacthub.io/changes: |
+    - kind: added
+      description: Initial release of the Bitdefender GravityZone EVPSC chart.

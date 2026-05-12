@@ -1,0 +1,9 @@
+# Values used by `ct lint` to verify the chart renders against schema.
+auth:
+  value: "Basic ZHVtbXk6ZHVtbXk="
+syslog:
+  target: "wazuh-manager.wazuh.svc.cluster.local"
+networkPolicy:
+  enabled: true
+podDisruptionBudget:
+  enabled: true
